@@ -2,6 +2,8 @@ import java.net.DatagramPacket;
 import edu.utulsa.unet.UDPSocket; //import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.io.IOException;
+import java.io.FileOutputStream;
+import java.io.FileNotFoundException;
 import java.util.Arrays;
 
 interface RReceiveUDPI {
@@ -20,6 +22,9 @@ public class udpreceiver implements RReceiveUDPI{
     static final int PORT = 32456;
     static int TIMEOUT = 1000;
     static int RETRYTIMES = 30;
+    static int WINDOWSIZE = 5;
+    static byte MAXFRAMENUM = 10;
+    static String FILENAME = "recieved_file";
 
     public static void main(String[] args)
     {
@@ -59,7 +64,7 @@ public class udpreceiver implements RReceiveUDPI{
     }
     public void setFilename(String fname)
     {
-
+        FILENAME = fname;
     }
     public String getFilename()
     {
@@ -78,62 +83,196 @@ public class udpreceiver implements RReceiveUDPI{
     }
     public boolean receiveFile()
     {
-        boolean retVal = false;
-        byte[] ack_buffer = new byte[1];
-        ack_buffer[0] = (byte)0x06;
-        boolean giveup = false;
-        byte [] buffer = new byte[255];
-        DatagramPacket packet = new DatagramPacket(buffer,buffer.length);
-        int timeouts = 0;
-        try
-        {
-            UDPSocket socket = new UDPSocket(PORT);
-            socket.setSoTimeout(TIMEOUT);
-            while(!giveup)
+        try {
+            FileOutputStream fos = new FileOutputStream(FILENAME);
+            boolean retVal = false;
+            byte[] ack_buffer = new byte[4];
+            ack_buffer[0] = (byte)0x04;
+            ack_buffer[1] = (byte)0x02;
+            ack_buffer[2] = (byte)0x06;
+            ack_buffer[3] = (byte)0;
+            boolean giveup = false;
+            byte [] buffer = new byte[255];
+            byte[][] recWindowBuff = new byte[WINDOWSIZE][255];
+            DatagramPacket packet = new DatagramPacket(buffer,buffer.length);
+            int timeouts = 0;
+            int lfr = -1;
+            int lfnr = -1;
+            //initialize windowbuffer
+            for (int i=0;i<WINDOWSIZE;i++)
             {
-                try
+                recWindowBuff[i] = null;
+            }
+            try
+            {
+                UDPSocket socket = new UDPSocket(PORT);
+                socket.setSoTimeout(TIMEOUT);
+                while(!giveup)
                 {
-                    socket.receive(packet);
-                    InetAddress client = packet.getAddress();
-                    int packet_length = buffer[0];
-                    int header_length = buffer[1];
-                    byte[] header = Arrays.copyOfRange(buffer, 2, header_length+1);
-                    // System.out.println(packet_length);
-                    // System.out.println(header_length);
-                    // System.out.println(Arrays.toString(buffer));
-                    // System.out.println(Arrays.toString(header));
-                    int message_code = header[0];
-                    byte framenum = header[1];
-                    if(message_code == 0x04)
+                    try
                     {
-                        System.out.println("End of transmission");
-                        socket.send(new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort()));
-                        return true;
+                        socket.receive(packet);
+                        InetAddress client = packet.getAddress();
+                        int packet_length = buffer[0] & 0xFF;
+                        int header_length = buffer[1] & 0xFF;
+                        byte[] header = Arrays.copyOfRange(buffer, 2, header_length+1);
+                        // System.out.println(packet_length);
+                        // System.out.println(header_length);
+                        // System.out.println(Arrays.toString(buffer));
+                        // System.out.println(Arrays.toString(header));
+                        int message_code = header[0];
+                        byte framenum = header[1];
+                        int offset;
+                        if(message_code == 0x04)
+                        {
+                            System.out.println("End of transmission");
+                            if (WINDOWSIZE > 1)//purge the buffer
+                            {
+                                // System.out.println(Arrays.toString(recWindowBuff[0])+Arrays.toString(recWindowBuff));
+                                if (!(recWindowBuff[0]!=null && recWindowBuff[1]!=null))
+                                {
+                                    // System.out.println("No shift!!!!!!!!");
+                                }
+                                while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
+                                {
+                                    fos.write(recWindowBuff[0]);
+                                    for (int i=0;i<recWindowBuff.length-1;i++)
+                                    {
+                                        recWindowBuff[i]=recWindowBuff[i+1];
+                                        lfr--;
+                                        // System.out.println("SHIFTING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                                    }
+                                    recWindowBuff[recWindowBuff.length-1] = null;
+                                }
+                                fos.write(recWindowBuff[0]);
+                            }
+                            ack_buffer[3] = framenum;
+                            socket.send(new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort()));
+                            fos.close();
+                            return true;
+                        }
+                        else
+                        {
+                            byte[] payload = Arrays.copyOfRange(buffer, header_length+1, packet_length);
+                            if (lfnr!=-1)
+                            {
+                                offset = framenum - lfnr;
+                                if (offset < -WINDOWSIZE) //wraparround
+                                {
+                                    offset += MAXFRAMENUM;
+                                }
+                                if (offset > WINDOWSIZE+1)
+                                {
+                                    System.out.println("HALT AND CATCH FIRE1!!");
+                                    System.exit(1);
+                                }
+                            }
+                            else
+                            {
+                                offset = 0;
+                            }
+                            if(lfr!=-1)
+                            {
+                                // System.out.println(lfr+" "+offset+" "+lfnr+" "+framenum);
+                                if (((lfr+offset) % (MAXFRAMENUM-1)) >= 0)
+                                {
+                                    lfr = (lfr+offset) % (MAXFRAMENUM-1);
+                                    // System.out.println("Adding at:"+lfr);
+                                    recWindowBuff[lfr] = payload;
+                                }
+                                else
+                                {
+                                    System.out.println("Sender retransmitted old frame... Ignoring");
+                                }
+                            }
+                            else
+                            {
+                                if (framenum >= WINDOWSIZE)
+                                {
+                                    System.out.println("HALT AND CATCH FIRE2!!");
+                                    System.exit(1);
+                                }
+                                recWindowBuff[framenum] = payload;
+                                lfr = framenum;
+                            }
+                            lfnr = framenum;
+                            // System.out.print(framenum+":");
+                            // System.out.println(Arrays.toString(payload));
+                            // for (int i=0;i<(packet_length-header_length-1);i++)
+                            //     System.out.print((char)payload[i]);
+                        }
+                        ack_buffer[3] = framenum;
+                        DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
+                        socket.send(ack_packet);
+                        timeouts=0;
+                        if (WINDOWSIZE > 1)
+                        {
+                            // System.out.println(Arrays.toString(recWindowBuff[0])+Arrays.toString(recWindowBuff));
+                            if (!(recWindowBuff[0]!=null && recWindowBuff[1]!=null))
+                            {
+                                // System.out.println("No shift!!!!!!!!");
+                            }
+                            while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
+                            {
+                                fos.write(recWindowBuff[0]);
+                                for (int i=0;i<WINDOWSIZE-1;i++)
+                                {
+                                    // System.out.println(Arrays.toString(recWindowBuff));
+                                    recWindowBuff[i]=recWindowBuff[i+1];
+                                }
+                                lfr--;
+                                // System.out.println("SHIFTING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                                recWindowBuff[recWindowBuff.length-1] = null;
+                                // System.out.println(Arrays.toString(recWindowBuff));
+                            }
+                        }
                     }
-                    else
+                    catch(IOException e)
                     {
-                        byte[] payload = Arrays.copyOfRange(buffer, header_length, packet_length-header_length);
-                        System.out.print(framenum+":");
-                        for (int i=0;i<(packet_length-header_length);i++)
-                            System.out.print((char)payload[i]);
+                        timeouts++;
                     }
-                    DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
-                    socket.send(ack_packet);
-                    timeouts=0;
-                }
-                catch(IOException e)
-                {
-                    timeouts++;
-                }
-                if(timeouts >= RETRYTIMES)
-                {
-                    System.out.println("Reciever timing out.");
-                    return false;
+                    if(timeouts >= RETRYTIMES)
+                    {
+                        System.out.println("Reciever timing out.");
+                        fos.close();
+                        return false;
+                    }
                 }
             }
+            catch(Exception e){ e.printStackTrace(); }
+            System.out.println("This should never be printed");
+            try
+            {
+                fos.close();
+            }
+            catch(IOException e){e.printStackTrace(); };
+            return false;
         }
-        catch(Exception e){ e.printStackTrace(); }
-        System.out.println("This should never be printed");
-        return false;
+        catch (FileNotFoundException e)
+        {
+            e.printStackTrace();
+            return false;
+        }
     }
+
+    public static boolean emptyBuffer(byte[][] arry)
+    {
+        for (byte[] i:arry)
+        {
+            if (i!=null)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static byte[] get_payload(byte[] buffer)
+    {
+        System.out.println(Arrays.toString(buffer));
+        int packet_length = buffer[0] & 0xFF;
+        int header_length = buffer[1] & 0xFF;
+        return Arrays.copyOfRange(buffer, header_length, packet_length);
+    }
+
 }

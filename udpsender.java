@@ -29,7 +29,8 @@ public class udpsender implements RSendUDPI{
     //static final String SERVER = "linux1.ens.utulsa.edu";
     static final String SERVER = "localhost";
     static final int PORT = 32456;
-    static String FILENAME = "test_file";
+    // static String FILENAME = "big_test_file";
+    static String FILENAME = "medium_test_file";
     static int TIMEOUT = 1000;
     static int RETRYTIMES = 10;
     static int WINDOWSIZE = 5;
@@ -113,19 +114,26 @@ public class udpsender implements RSendUDPI{
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
             byte [] buffer = new byte[255];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(SERVER), PORT);
-            byte[] ack_buffer = new byte[1];
+            byte[] ack_buffer = new byte[4];
             DatagramPacket ack_packet = new DatagramPacket(ack_buffer,ack_buffer.length);
             UDPSocket socket = new UDPSocket(23456);
             socket.setSoTimeout(TIMEOUT);
-            byte []readBuff = new byte[251];
+            byte[] readBuff = new byte[251];
+            byte[][] sendWindowBuff = new byte[WINDOWSIZE][256];
             boolean giveup = false;
             byte framenum = 0;
+            int lsf = -1;
+            int outstanding_frames = 0;
+            for (int j=0;j<WINDOWSIZE;j++)
+            {
+                sendWindowBuff[j] = null;
+            }
             while (!giveup)
             {
                 Arrays.fill(readBuff, (byte)0);
                 int bi=0;
                 int x;
-                for (;bi<252;bi++)
+                for (;bi<251;bi++)
                 {
                     x = br.read();
                     if (x == -1)
@@ -150,14 +158,37 @@ public class udpsender implements RSendUDPI{
                     {
                         buffer[4+j] = (byte)readBuff[j];
                     }
+                    lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
+                    sendWindowBuff[lsf] = new byte[256];
+                    for (int i=0;i<255;i++)
+                        sendWindowBuff[lsf][i] = buffer[i];
+                    sendWindowBuff[lsf][255] = (byte)framenum;
                 }
                 for(int i=1;i<=RETRYTIMES;i++)
                 {
                     try
                     {
+                        ack_buffer[0]=0;
                         socket.send(packet);
                         socket.receive(ack_packet);
                         InetAddress client = ack_packet.getAddress();
+                        byte ack_framenum = ack_buffer[3];
+                        for (int j=0;j<WINDOWSIZE;j++)
+                        {
+                            if (sendWindowBuff[j]!=null && sendWindowBuff[j][255] == ack_framenum)
+                            {
+                                sendWindowBuff[j][0] = 0;
+                            }
+                        }
+                        while(sendWindowBuff[0]!=null && sendWindowBuff[0][0] == 0)
+                        {
+                            for (int j=0;j<WINDOWSIZE-1;j++)
+                            {
+                                sendWindowBuff[j] = sendWindowBuff[j+1];
+                            }
+                            sendWindowBuff[WINDOWSIZE-1] = null;
+                            lsf--;
+                        }
                         // System.out.print(new String("ack"));
                         framenum++;
                         framenum%=MAXFRAMENUM;
