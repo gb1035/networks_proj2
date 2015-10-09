@@ -22,7 +22,7 @@ public class udpreceiver implements RReceiveUDPI{
     static final int PORT = 32456;
     static int TIMEOUT = 1000;
     static int RETRYTIMES = 30;
-    static int WINDOWSIZE = 5;
+    static int WINDOWSIZE = 6;
     static byte MAXFRAMENUM = 10;
     static String FILENAME = "recieved_file";
 
@@ -97,7 +97,7 @@ public class udpreceiver implements RReceiveUDPI{
             DatagramPacket packet = new DatagramPacket(buffer,buffer.length);
             int timeouts = 0;
             int lfr = -1;
-            int lfnr = -1;
+            int lfnr = 0;
             //initialize windowbuffer
             for (int i=0;i<WINDOWSIZE;i++)
             {
@@ -122,6 +122,13 @@ public class udpreceiver implements RReceiveUDPI{
                         // System.out.println(Arrays.toString(header));
                         int message_code = header[0];
                         byte framenum = header[1];
+                        System.out.println("got "+framenum);
+                        for (int i=0;i<WINDOWSIZE;i++)
+                        {
+                            if (recWindowBuff[i]!=null)
+                                System.out.print(recWindowBuff[i][3]+" - ");
+                        }
+                        System.out.println();
                         int offset;
                         if(message_code == 0x04)
                         {
@@ -135,7 +142,9 @@ public class udpreceiver implements RReceiveUDPI{
                                 }
                                 while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
                                 {
-                                    fos.write(recWindowBuff[0]);
+                                    packet_length = recWindowBuff[0][0]&0xff;
+                                    header_length = recWindowBuff[0][1]&0xff;
+                                    fos.write(Arrays.copyOfRange(recWindowBuff[0], header_length+1, packet_length));
                                     for (int i=0;i<recWindowBuff.length-1;i++)
                                     {
                                         recWindowBuff[i]=recWindowBuff[i+1];
@@ -144,67 +153,36 @@ public class udpreceiver implements RReceiveUDPI{
                                     }
                                     recWindowBuff[recWindowBuff.length-1] = null;
                                 }
-                                fos.write(recWindowBuff[0]);
+                                packet_length = recWindowBuff[0][0]&0xff;
+                                header_length = recWindowBuff[0][1]&0xff;
+                                fos.write(Arrays.copyOfRange(recWindowBuff[0], header_length+1, packet_length));
                             }
                             ack_buffer[3] = framenum;
                             socket.send(new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort()));
                             fos.close();
                             return true;
                         }
+                        byte[] payload = Arrays.copyOfRange(buffer, header_length+1, packet_length);
+                        offset = (framenum - lfnr);
+                        if (offset<0)
+                            offset += MAXFRAMENUM;
+                        System.out.println(offset+" "+framenum+" "+lfnr);
+                        if (offset >= WINDOWSIZE)
+                        {
+                            System.out.println("Sender retransmitting acked frame: "+framenum);
+                            ack_buffer[3] = framenum;
+                            DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
+                            socket.send(ack_packet);
+                        }
                         else
                         {
-                            byte[] payload = Arrays.copyOfRange(buffer, header_length+1, packet_length);
-                            if (lfnr!=-1)
-                            {
-                                offset = framenum - lfnr;
-                                if (offset < -WINDOWSIZE) //wraparround
-                                {
-                                    offset += MAXFRAMENUM;
-                                }
-                                if (offset > WINDOWSIZE+1)
-                                {
-                                    System.out.println("HALT AND CATCH FIRE1!!");
-                                    System.exit(1);
-                                }
-                            }
-                            else
-                            {
-                                offset = 0;
-                            }
-                            if(lfr!=-1)
-                            {
-                                // System.out.println(lfr+" "+offset+" "+lfnr+" "+framenum);
-                                if (((lfr+offset) % (MAXFRAMENUM-1)) >= 0)
-                                {
-                                    lfr = (lfr+offset) % (MAXFRAMENUM-1);
-                                    // System.out.println("Adding at:"+lfr);
-                                    recWindowBuff[lfr] = payload;
-                                }
-                                else
-                                {
-                                    System.out.println("Sender retransmitted old frame... Ignoring");
-                                }
-                            }
-                            else
-                            {
-                                if (framenum >= WINDOWSIZE)
-                                {
-                                    System.out.println("HALT AND CATCH FIRE2!!");
-                                    System.exit(1);
-                                }
-                                recWindowBuff[framenum] = payload;
-                                lfr = framenum;
-                            }
-                            lfnr = framenum;
-                            // System.out.print(framenum+":");
-                            // System.out.println(Arrays.toString(payload));
-                            // for (int i=0;i<(packet_length-header_length-1);i++)
-                            //     System.out.print((char)payload[i]);
+                            recWindowBuff[offset] = Arrays.copyOf(buffer, buffer.length);
+                            ack_buffer[3] = framenum;
+                            System.out.println("Acking "+framenum);
+                            DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
+                            socket.send(ack_packet);
+                            timeouts=0;
                         }
-                        ack_buffer[3] = framenum;
-                        DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
-                        socket.send(ack_packet);
-                        timeouts=0;
                         if (WINDOWSIZE > 1)
                         {
                             // System.out.println(Arrays.toString(recWindowBuff[0])+Arrays.toString(recWindowBuff));
@@ -214,12 +192,15 @@ public class udpreceiver implements RReceiveUDPI{
                             }
                             while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
                             {
-                                fos.write(recWindowBuff[0]);
+                                packet_length = recWindowBuff[0][0]&0xff;
+                                header_length = recWindowBuff[0][1]&0xff;
+                                fos.write(Arrays.copyOfRange(recWindowBuff[0], header_length+1, packet_length));
                                 for (int i=0;i<WINDOWSIZE-1;i++)
                                 {
                                     // System.out.println(Arrays.toString(recWindowBuff));
                                     recWindowBuff[i]=recWindowBuff[i+1];
                                 }
+                                lfnr = recWindowBuff[0][3];
                                 lfr--;
                                 // System.out.println("SHIFTING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                                 recWindowBuff[recWindowBuff.length-1] = null;

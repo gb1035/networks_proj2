@@ -117,62 +117,112 @@ public class udpsender implements RSendUDPI{
             byte[] ack_buffer = new byte[4];
             DatagramPacket ack_packet = new DatagramPacket(ack_buffer,ack_buffer.length);
             UDPSocket socket = new UDPSocket(23456);
-            socket.setSoTimeout(TIMEOUT);
+            socket.setSoTimeout(100);
             byte[] readBuff = new byte[251];
             byte[][] sendWindowBuff = new byte[WINDOWSIZE][256];
+            long[] sendWindowTimes = new long[WINDOWSIZE];
             boolean giveup = false;
+            boolean done_read_file = false;
             byte framenum = 0;
             int lsf = -1;
             int outstanding_frames = 0;
-            for (int j=0;j<WINDOWSIZE;j++)
+            boolean send_ready = false;
+            for (int i=0;i<WINDOWSIZE;i++)
             {
-                sendWindowBuff[j] = null;
+                sendWindowBuff[i] = null;
+                sendWindowTimes[i] = 0;
             }
             while (!giveup)
             {
-                Arrays.fill(readBuff, (byte)0);
-                int bi=0;
-                int x;
-                for (;bi<251;bi++)
+                // System.out.println(Arrays.toString(sendWindowBuff));
+
+                // System.out.println(outstanding_frames);
+                // for(int i=0;i<WINDOWSIZE;i++)
+                //     if (sendWindowBuff[i] != null)
+                //         System.out.print(sendWindowBuff[i][0]+" ");
+                // System.out.println("");
+
+                if (outstanding_frames < WINDOWSIZE)
                 {
-                    x = br.read();
-                    if (x == -1)
-                        break;
-                    readBuff[bi] = (byte)x;
-                }
-                if (bi == 0)
-                {
-                    buffer[0] = 4;
-                    buffer[1] = 3;
-                    buffer[2] = 0x04;
-                    buffer[3] = framenum;
-                    giveup = true;
-                }
-                else
-                {
-                    buffer[0] = (byte)(bi+4);
-                    buffer[1] = 3;
-                    buffer[2] = 0x00;
-                    buffer[3] = framenum;
-                    for(int j=0;j<readBuff.length;j++)
+                    Arrays.fill(readBuff, (byte)0);
+                    int bi=0;
+                    int x;
+                    for (;bi<251;bi++)
                     {
-                        buffer[4+j] = (byte)readBuff[j];
+                        x = br.read();
+                        if (x == -1)
+                            break;
+                        readBuff[bi] = (byte)x;
                     }
-                    lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
-                    sendWindowBuff[lsf] = new byte[256];
-                    for (int i=0;i<255;i++)
-                        sendWindowBuff[lsf][i] = buffer[i];
-                    sendWindowBuff[lsf][255] = (byte)framenum;
-                }
-                for(int i=1;i<=RETRYTIMES;i++)
-                {
-                    try
+                    if (bi == 0)
                     {
-                        ack_buffer[0]=0;
+                        buffer[0] = 4;
+                        buffer[1] = 3;
+                        buffer[2] = 0x04;
+                        buffer[3] = framenum;
+                        done_read_file = true;
+                        System.out.println("Done reading file");
+                        lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
+                        sendWindowBuff[lsf] = new byte[256];
+                        for (int i=0;i<255;i++)
+                            sendWindowBuff[lsf][i] = buffer[i];
+                        sendWindowTimes[lsf] = System.currentTimeMillis();
+                        sendWindowBuff[lsf][255] = (byte)framenum;
+                        outstanding_frames++;
+                        send_ready = true;
+                    }
+                    else
+                    {
+                        buffer[0] = (byte)(bi+4);
+                        buffer[1] = 3;
+                        buffer[2] = 0x00;
+                        buffer[3] = framenum;
+                        for(int j=0;j<readBuff.length;j++)
+                        {
+                            buffer[4+j] = (byte)readBuff[j];
+                        }
+                        lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
+                        sendWindowBuff[lsf] = new byte[256];
+                        for (int i=0;i<255;i++)
+                            sendWindowBuff[lsf][i] = buffer[i];
+                        sendWindowTimes[lsf] = System.currentTimeMillis();
+                        sendWindowBuff[lsf][255] = (byte)framenum;
+                        outstanding_frames++;
+                        send_ready = true;
+                    }
+                }
+                try
+                {
+                    if (send_ready)
+                    {
+                        System.out.println("sending "+buffer[3]);
                         socket.send(packet);
-                        socket.receive(ack_packet);
+                        framenum++;
+                        framenum%=MAXFRAMENUM;
+                        send_ready = false;
+                    }
+                    long curtime = System.currentTimeMillis();
+                    for (int i=0;i<WINDOWSIZE;i++)
+                    {
+                        if (sendWindowBuff[i] != null && sendWindowBuff[i][0] != 0 && (curtime - sendWindowTimes[i])>TIMEOUT)
+                        {
+                            // buffer = Arrays.copyOfRange(sendWindowBuff[i], 0, sendWindowBuff[i].length-1);
+                            for (int j=0;j<255;j++)
+                                buffer[j] = sendWindowBuff[i][j];
+                            // System.out.println(Arrays.toString(buffer));
+                            sendWindowTimes[i] = System.currentTimeMillis();
+                            System.out.println("retransmitting "+ buffer[3]);
+                            socket.send(packet);
+                        }
+                    }
+                    for (int i=0;i<ack_buffer.length;i++)
+                        ack_buffer[i] = 0;
+                    socket.receive(ack_packet);
+                    if (ack_buffer[0]>0)
+                    {
                         InetAddress client = ack_packet.getAddress();
                         byte ack_framenum = ack_buffer[3];
+                        System.out.println("acked" + ack_framenum);
                         for (int j=0;j<WINDOWSIZE;j++)
                         {
                             if (sendWindowBuff[j]!=null && sendWindowBuff[j][255] == ack_framenum)
@@ -185,26 +235,30 @@ public class udpsender implements RSendUDPI{
                             for (int j=0;j<WINDOWSIZE-1;j++)
                             {
                                 sendWindowBuff[j] = sendWindowBuff[j+1];
+                                sendWindowTimes[j] = sendWindowTimes[j+1];
                             }
                             sendWindowBuff[WINDOWSIZE-1] = null;
+                            sendWindowTimes[WINDOWSIZE-1] = 0;
                             lsf--;
+                            outstanding_frames--;
                         }
                         // System.out.print(new String("ack"));
-                        framenum++;
-                        framenum%=MAXFRAMENUM;
-                        break;
                     }
-                    catch(IOException e)
+                    if (sendWindowBuff[0] == null && done_read_file)
                     {
-                        System.out.println("No ack in time, resending");
-                        if (i == RETRYTIMES)
-                        {
-                            System.out.println("Too many timeouts, giving up.");
-                            giveup = true;
-                            return false;
-                        }
-                        continue;
+                        System.out.println("end of file");
+                        giveup = true;
                     }
+                }
+                catch(IOException e)
+                {
+                    // System.out.println("No ack in time, resending");
+                    // if (i == RETRYTIMES)
+                    // {
+                    //     System.out.println("Too many timeouts, giving up.");
+                    //     giveup = true;
+                    //     return false;
+                    // }
                 }
             }
         }
