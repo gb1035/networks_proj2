@@ -31,10 +31,13 @@ public class udpsender implements RSendUDPI{
     static final int PORT = 32456;
     // static String FILENAME = "big_test_file";
     static String FILENAME = "medium_test_file";
-    static int TIMEOUT = 1000;
-    static int RETRYTIMES = 10;
-    static int WINDOWSIZE = 5;
-    static byte MAXFRAMENUM = 10;
+    static final int TIMEOUT = 1000;
+    static final int RETRYTIMES = 10;
+    static final int WINDOWSIZE = 5;
+    static final byte MAXFRAMENUM = 10;
+    static final int MAXARRAYSIZE = 134217727;
+    static final int HEADERLENG = 7;
+    static final int POSOFFRAMENUM = 6;
 
     public static void main(String[] args)
     {
@@ -112,14 +115,14 @@ public class udpsender implements RSendUDPI{
     {
         try {
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
-            byte [] buffer = new byte[255];
+            byte [] buffer = new byte[MAXARRAYSIZE];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(SERVER), PORT);
             byte[] ack_buffer = new byte[7];
             DatagramPacket ack_packet = new DatagramPacket(ack_buffer,ack_buffer.length);
             UDPSocket socket = new UDPSocket(23456);
             socket.setSoTimeout(100);
-            byte[] readBuff = new byte[251];
-            byte[][] sendWindowBuff = new byte[WINDOWSIZE][256];
+            byte[] readBuff = new byte[MAXARRAYSIZE-7];
+            byte[][] sendWindowBuff = new byte[WINDOWSIZE][MAXARRAYSIZE];
             long[] sendWindowTimes = new long[WINDOWSIZE];
             boolean giveup = false;
             boolean done_read_file = false;
@@ -139,7 +142,7 @@ public class udpsender implements RSendUDPI{
                     Arrays.fill(readBuff, (byte)0);
                     int bi=0;
                     int x;
-                    for (;bi<251;bi++)
+                    for (;bi<MAXARRAYSIZE-HEADERLENG;bi++)
                     {
                         x = br.read();
                         if (x == -1)
@@ -148,15 +151,18 @@ public class udpsender implements RSendUDPI{
                     }
                     if (bi == 0)
                     {
-                        buffer[0] = 4;
-                        buffer[1] = 3;
-                        buffer[2] = 0x04;
-                        buffer[3] = framenum;
+                        buffer[0] = 0x07;
+                        buffer[1] = 0x00;
+                        buffer[2] = 0x00;
+                        buffer[3] = 0x00;
+                        buffer[4] = 3;
+                        buffer[5] = 0x04;
+                        buffer[POSOFFRAMENUM] = framenum;
                         done_read_file = true;
                         System.out.println("Done reading file");
                         lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
-                        sendWindowBuff[lsf] = new byte[256];
-                        for (int i=0;i<255;i++)
+                        sendWindowBuff[lsf] = new byte[MAXARRAYSIZE];
+                        for (int i=0;i<MAXARRAYSIZE;i++)
                             sendWindowBuff[lsf][i] = buffer[i];
                         sendWindowTimes[lsf] = System.currentTimeMillis();
                         sendWindowBuff[lsf][255] = (byte)framenum;
