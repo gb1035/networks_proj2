@@ -114,7 +114,7 @@ public class udpsender implements RSendUDPI{
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
             byte [] buffer = new byte[255];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(SERVER), PORT);
-            byte[] ack_buffer = new byte[4];
+            byte[] ack_buffer = new byte[7];
             DatagramPacket ack_packet = new DatagramPacket(ack_buffer,ack_buffer.length);
             UDPSocket socket = new UDPSocket(23456);
             socket.setSoTimeout(100);
@@ -134,14 +134,6 @@ public class udpsender implements RSendUDPI{
             }
             while (!giveup)
             {
-                // System.out.println(Arrays.toString(sendWindowBuff));
-
-                // System.out.println(outstanding_frames);
-                // for(int i=0;i<WINDOWSIZE;i++)
-                //     if (sendWindowBuff[i] != null)
-                //         System.out.print(sendWindowBuff[i][0]+" ");
-                // System.out.println("");
-
                 if (outstanding_frames < WINDOWSIZE)
                 {
                     Arrays.fill(readBuff, (byte)0);
@@ -206,7 +198,6 @@ public class udpsender implements RSendUDPI{
                     {
                         if (sendWindowBuff[i] != null && sendWindowBuff[i][0] != 0 && (curtime - sendWindowTimes[i])>TIMEOUT)
                         {
-                            // buffer = Arrays.copyOfRange(sendWindowBuff[i], 0, sendWindowBuff[i].length-1);
                             for (int j=0;j<255;j++)
                                 buffer[j] = sendWindowBuff[i][j];
                             // System.out.println(Arrays.toString(buffer));
@@ -218,10 +209,10 @@ public class udpsender implements RSendUDPI{
                     for (int i=0;i<ack_buffer.length;i++)
                         ack_buffer[i] = 0;
                     socket.receive(ack_packet);
-                    if (ack_buffer[0]>0)
+                    if (get_packet_length(ack_buffer)>0)
                     {
                         InetAddress client = ack_packet.getAddress();
-                        byte ack_framenum = ack_buffer[3];
+                        byte ack_framenum = ack_buffer[6];
                         System.out.println("acked" + ack_framenum);
                         for (int j=0;j<WINDOWSIZE;j++)
                         {
@@ -272,5 +263,15 @@ public class udpsender implements RSendUDPI{
             e.printStackTrace();
         }
         return true;
+    }
+
+    public static int get_packet_length(byte[] arry)
+    {
+        int r = 0;
+        r += (arry[0] & 0xff) << 0x00;
+        r += (arry[1] & 0xff) << 0x08;
+        r += (arry[2] & 0xff) << 0x10;
+        r += (arry[3] & 0xff) << 0x18;
+        return r;
     }
 }
