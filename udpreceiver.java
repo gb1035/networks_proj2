@@ -27,6 +27,7 @@ public class udpreceiver implements RReceiveUDPI{
     static String FILENAME = "recieved_file";
     static int STARTOFHEADER = 5;
     static final int MAXARRAYSIZE = 134217727;
+    static final int POSOFFRAMENUM = 6;
 
     public static void main(String[] args)
     {
@@ -89,13 +90,10 @@ public class udpreceiver implements RReceiveUDPI{
             FileOutputStream fos = new FileOutputStream(FILENAME);
             boolean retVal = false;
             byte[] ack_buffer = new byte[7];
-            ack_buffer[0] = (byte)0x04;
-            ack_buffer[1] = (byte)0x00;
-            ack_buffer[2] = (byte)0x00;
-            ack_buffer[3] = (byte)0x00;
+            set_packet_length(ack_buffer, 4);
             ack_buffer[4] = (byte)0x02;
             ack_buffer[5] = (byte)0x06;
-            ack_buffer[6] = (byte)0;
+            ack_buffer[POSOFFRAMENUM] = (byte)0;
             boolean giveup = false;
             byte [] buffer = new byte[MAXARRAYSIZE];
             byte[][] recWindowBuff = new byte[WINDOWSIZE][MAXARRAYSIZE];
@@ -118,12 +116,10 @@ public class udpreceiver implements RReceiveUDPI{
                     {
                         socket.receive(packet);
                         InetAddress client = packet.getAddress();
-                        int packet_length = get_packet_length(buffer);
-                        int header_length = get_header_length(buffer);
-                        byte[] header = Arrays.copyOfRange(buffer, STARTOFHEADER, header_length + STARTOFHEADER - 1);
-                        int message_code = header[0];
-                        byte framenum = header[1];
+                        int message_code =  buffer[5];
+                        byte framenum =  buffer[POSOFFRAMENUM];
                         System.out.println("got "+framenum);
+                        System.out.println(Arrays.toString(Arrays.copyOfRange(buffer, 0, 20)));
                         // for (int i=0;i<WINDOWSIZE;i++)
                         // {
                         //     if (recWindowBuff[i]!=null)
@@ -148,7 +144,7 @@ public class udpreceiver implements RReceiveUDPI{
                                 }
                                 fos.write(get_payload(recWindowBuff[0]));
                             }
-                            ack_buffer[6] = framenum;
+                            ack_buffer[POSOFFRAMENUM] = framenum;
                             socket.send(new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort()));
                             fos.close();
                             return true;
@@ -161,14 +157,14 @@ public class udpreceiver implements RReceiveUDPI{
                         if (offset >= WINDOWSIZE)
                         {
                             System.out.println("Sender retransmitting acked frame: "+framenum);
-                            ack_buffer[6] = framenum;
+                            ack_buffer[POSOFFRAMENUM] = framenum;
                             DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
                             socket.send(ack_packet);
                         }
                         else
                         {
                             recWindowBuff[offset] = Arrays.copyOf(buffer, buffer.length);
-                            ack_buffer[6] = framenum;
+                            ack_buffer[POSOFFRAMENUM] = framenum;
                             System.out.println("Acking "+framenum);
                             DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
                             socket.send(ack_packet);
@@ -183,7 +179,7 @@ public class udpreceiver implements RReceiveUDPI{
                                 {
                                     recWindowBuff[i]=recWindowBuff[i+1];
                                 }
-                                lfnr = recWindowBuff[0][3];
+                                lfnr = recWindowBuff[0][POSOFFRAMENUM];
                                 lfr--;
                                 recWindowBuff[recWindowBuff.length-1] = null;
                             }
@@ -231,9 +227,9 @@ public class udpreceiver implements RReceiveUDPI{
 
     public static byte[] get_payload(byte[] buffer)
     {
-        int packet_length = buffer[0] & 0xFF;
-        int header_length = buffer[1] & 0xFF;
-        return Arrays.copyOfRange(buffer, header_length, packet_length);
+        int packet_length = get_packet_length(buffer);
+        int header_length = get_header_length(buffer);
+        return Arrays.copyOfRange(buffer, header_length + 4, packet_length+3);
     }
 
     public static int get_packet_length(byte[] arry)
@@ -249,6 +245,14 @@ public class udpreceiver implements RReceiveUDPI{
     public static int get_header_length(byte[] arry)
     {
         return arry[4];
+    }
+
+    public static void set_packet_length(byte[] arry, int leng)
+    {
+        arry[0] = (byte)((leng >> 0x00) & 0xff);
+        arry[1] = (byte)((leng >> 0x08) & 0xff);
+        arry[2] = (byte)((leng >> 0x10) & 0xff);
+        arry[3] = (byte)((leng >> 0x18) & 0xff);
     }
 
 }

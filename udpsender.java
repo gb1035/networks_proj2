@@ -8,6 +8,7 @@ import java.io.FileReader;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
+import java.net.SocketTimeoutException;
 
 interface RSendUDPI {
     public boolean setMode(int mode);
@@ -29,15 +30,18 @@ public class udpsender implements RSendUDPI{
     //static final String SERVER = "linux1.ens.utulsa.edu";
     static final String SERVER = "localhost";
     static final int PORT = 32456;
-    // static String FILENAME = "big_test_file";
-    static String FILENAME = "medium_test_file";
     static final int TIMEOUT = 1000;
     static final int RETRYTIMES = 10;
     static final int WINDOWSIZE = 5;
     static final byte MAXFRAMENUM = 10;
-    static final int MAXARRAYSIZE = 134217727;
+    static final int MAXARRAYSIZE = 32767;
     static final int HEADERLENG = 7;
     static final int POSOFFRAMENUM = 6;
+    static final int SOCKETTIMEOUT = 10;
+
+    static int BUFFARRAYSIZE = MAXARRAYSIZE;
+    // static String FILENAME = "big_test_file";
+    static String FILENAME = "medium_test_file";
 
     public static void main(String[] args)
     {
@@ -115,14 +119,14 @@ public class udpsender implements RSendUDPI{
     {
         try {
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
-            byte [] buffer = new byte[MAXARRAYSIZE];
+            byte [] buffer = new byte[BUFFARRAYSIZE];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(SERVER), PORT);
-            byte[] ack_buffer = new byte[7];
+            byte[] ack_buffer = new byte[HEADERLENG];
             DatagramPacket ack_packet = new DatagramPacket(ack_buffer,ack_buffer.length);
             UDPSocket socket = new UDPSocket(23456);
-            socket.setSoTimeout(100);
-            byte[] readBuff = new byte[MAXARRAYSIZE-7];
-            byte[][] sendWindowBuff = new byte[WINDOWSIZE][MAXARRAYSIZE];
+            socket.setSoTimeout(SOCKETTIMEOUT);
+            byte[] readBuff = new byte[BUFFARRAYSIZE-HEADERLENG];
+            byte[][] sendWindowBuff = new byte[WINDOWSIZE][BUFFARRAYSIZE];
             long[] sendWindowTimes = new long[WINDOWSIZE];
             boolean giveup = false;
             boolean done_read_file = false;
@@ -130,6 +134,7 @@ public class udpsender implements RSendUDPI{
             int lsf = -1;
             int outstanding_frames = 0;
             boolean send_ready = false;
+            boolean eof_frame_sent = false;
             for (int i=0;i<WINDOWSIZE;i++)
             {
                 sendWindowBuff[i] = null;
@@ -142,49 +147,45 @@ public class udpsender implements RSendUDPI{
                     Arrays.fill(readBuff, (byte)0);
                     int bi=0;
                     int x;
-                    for (;bi<MAXARRAYSIZE-HEADERLENG;bi++)
+                    for (;bi<BUFFARRAYSIZE-HEADERLENG;bi++)
                     {
                         x = br.read();
                         if (x == -1)
                             break;
                         readBuff[bi] = (byte)x;
                     }
-                    if (bi == 0)
+                    if (bi == 0 && !eof_frame_sent)
                     {
-                        buffer[0] = 0x07;
-                        buffer[1] = 0x00;
-                        buffer[2] = 0x00;
-                        buffer[3] = 0x00;
+                        set_packet_length(buffer, 7);
                         buffer[4] = 3;
                         buffer[5] = 0x04;
                         buffer[POSOFFRAMENUM] = framenum;
                         done_read_file = true;
                         System.out.println("Done reading file");
                         lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
-                        sendWindowBuff[lsf] = new byte[MAXARRAYSIZE];
-                        for (int i=0;i<MAXARRAYSIZE;i++)
+                        sendWindowBuff[lsf] = new byte[BUFFARRAYSIZE];
+                        for (int i=0;i<BUFFARRAYSIZE;i++)
                             sendWindowBuff[lsf][i] = buffer[i];
                         sendWindowTimes[lsf] = System.currentTimeMillis();
-                        sendWindowBuff[lsf][255] = (byte)framenum;
                         outstanding_frames++;
                         send_ready = true;
+                        eof_frame_sent = true;
                     }
                     else
                     {
-                        buffer[0] = (byte)(bi+4);
-                        buffer[1] = 3;
-                        buffer[2] = 0x00;
-                        buffer[3] = framenum;
+                        set_packet_length(buffer, bi+4);
+                        buffer[4] = 3;
+                        buffer[5] = 0x00;
+                        buffer[POSOFFRAMENUM] = framenum;
                         for(int j=0;j<readBuff.length;j++)
                         {
-                            buffer[4+j] = (byte)readBuff[j];
+                            buffer[HEADERLENG+j] = (byte)readBuff[j];
                         }
                         lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
-                        sendWindowBuff[lsf] = new byte[256];
-                        for (int i=0;i<255;i++)
+                        sendWindowBuff[lsf] = new byte[BUFFARRAYSIZE];
+                        for (int i=0;i<BUFFARRAYSIZE;i++)
                             sendWindowBuff[lsf][i] = buffer[i];
                         sendWindowTimes[lsf] = System.currentTimeMillis();
-                        sendWindowBuff[lsf][255] = (byte)framenum;
                         outstanding_frames++;
                         send_ready = true;
                     }
@@ -193,7 +194,7 @@ public class udpsender implements RSendUDPI{
                 {
                     if (send_ready)
                     {
-                        System.out.println("sending "+buffer[3]);
+                        System.out.println("sending "+buffer[POSOFFRAMENUM]);
                         socket.send(packet);
                         framenum++;
                         framenum%=MAXFRAMENUM;
@@ -204,11 +205,11 @@ public class udpsender implements RSendUDPI{
                     {
                         if (sendWindowBuff[i] != null && sendWindowBuff[i][0] != 0 && (curtime - sendWindowTimes[i])>TIMEOUT)
                         {
-                            for (int j=0;j<255;j++)
+                            for (int j=0;j<BUFFARRAYSIZE;j++)
                                 buffer[j] = sendWindowBuff[i][j];
                             // System.out.println(Arrays.toString(buffer));
                             sendWindowTimes[i] = System.currentTimeMillis();
-                            System.out.println("retransmitting "+ buffer[3]);
+                            System.out.println("retransmitting "+ buffer[POSOFFRAMENUM]);
                             socket.send(packet);
                         }
                     }
@@ -218,16 +219,17 @@ public class udpsender implements RSendUDPI{
                     if (get_packet_length(ack_buffer)>0)
                     {
                         InetAddress client = ack_packet.getAddress();
-                        byte ack_framenum = ack_buffer[6];
-                        System.out.println("acked" + ack_framenum);
+                        byte ack_framenum = ack_buffer[POSOFFRAMENUM];
+                        System.out.println("acked " + ack_framenum);
+                        System.out.println(Arrays.toString(ack_buffer));
                         for (int j=0;j<WINDOWSIZE;j++)
                         {
-                            if (sendWindowBuff[j]!=null && sendWindowBuff[j][255] == ack_framenum)
+                            if (sendWindowBuff[j]!=null && sendWindowBuff[j][POSOFFRAMENUM] == ack_framenum)
                             {
-                                sendWindowBuff[j][0] = 0;
+                                set_packet_length(sendWindowBuff[j], 0);
                             }
                         }
-                        while(sendWindowBuff[0]!=null && sendWindowBuff[0][0] == 0)
+                        while(sendWindowBuff[0]!=null && get_packet_length(sendWindowBuff[0]) == 0)
                         {
                             for (int j=0;j<WINDOWSIZE-1;j++)
                             {
@@ -247,9 +249,14 @@ public class udpsender implements RSendUDPI{
                         giveup = true;
                     }
                 }
+                catch(SocketTimeoutException e)
+                {
+
+                }
                 catch(IOException e)
                 {
-                    // System.out.println("No ack in time, resending");
+                    e.printStackTrace();
+                    //System.out.println("No ack in time, resending");
                     // if (i == RETRYTIMES)
                     // {
                     //     System.out.println("Too many timeouts, giving up.");
@@ -279,5 +286,13 @@ public class udpsender implements RSendUDPI{
         r += (arry[2] & 0xff) << 0x10;
         r += (arry[3] & 0xff) << 0x18;
         return r;
+    }
+
+    public static void set_packet_length(byte[] arry, int leng)
+    {
+        arry[0] = (byte)((leng >> 0x00) & 0xff);
+        arry[1] = (byte)((leng >> 0x08) & 0xff);
+        arry[2] = (byte)((leng >> 0x10) & 0xff);
+        arry[3] = (byte)((leng >> 0x18) & 0xff);
     }
 }
