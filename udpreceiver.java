@@ -28,6 +28,7 @@ public class udpreceiver implements RReceiveUDPI{
     static int STARTOFHEADER = 5;
     static final int MAXARRAYSIZE = 134217727;
     static final int POSOFFRAMENUM = 6;
+    static final int WAITAFTEREOF = 1000; //how long after eof to wait to ack any lost frames.
 
     public static void main(String[] args)
     {
@@ -99,8 +100,8 @@ public class udpreceiver implements RReceiveUDPI{
             byte[][] recWindowBuff = new byte[WINDOWSIZE][MAXARRAYSIZE];
             DatagramPacket packet = new DatagramPacket(buffer,buffer.length);
             int timeouts = 0;
-            int lfr = -1;
             int lfnr = 0;
+            long got_eof_time = Long.MAX_VALUE;
             //initialize windowbuffer
             for (int i=0;i<WINDOWSIZE;i++)
             {
@@ -110,7 +111,8 @@ public class udpreceiver implements RReceiveUDPI{
             {
                 UDPSocket socket = new UDPSocket(PORT);
                 socket.setSoTimeout(TIMEOUT);
-                while(!giveup)
+                // System.out.println((System.currentTimeMillis() - got_eof_time) > WAITAFTEREOF);
+                while(!((System.currentTimeMillis() - got_eof_time) > WAITAFTEREOF))
                 {
                     try
                     {
@@ -138,7 +140,6 @@ public class udpreceiver implements RReceiveUDPI{
                                     for (int i=0;i<recWindowBuff.length-1;i++)
                                     {
                                         recWindowBuff[i]=recWindowBuff[i+1];
-                                        lfr--;
                                     }
                                     recWindowBuff[recWindowBuff.length-1] = null;
                                 }
@@ -146,42 +147,42 @@ public class udpreceiver implements RReceiveUDPI{
                             }
                             ack_buffer[POSOFFRAMENUM] = framenum;
                             socket.send(new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort()));
-                            fos.close();
-                            return true;
-                        }
-                        byte[] payload = get_payload(buffer);
-                        offset = (framenum - lfnr);
-                        if (offset<0)
-                            offset += MAXFRAMENUM;
-                        // System.out.println(offset+" "+framenum+" "+lfnr);
-                        if (offset >= WINDOWSIZE)
-                        {
-                            System.out.println("Sender retransmitting acked frame: "+framenum);
-                            ack_buffer[POSOFFRAMENUM] = framenum;
-                            DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
-                            socket.send(ack_packet);
+                            got_eof_time = System.currentTimeMillis();
                         }
                         else
                         {
-                            recWindowBuff[offset] = Arrays.copyOf(buffer, buffer.length);
-                            ack_buffer[POSOFFRAMENUM] = framenum;
-                            System.out.println("Acking "+framenum);
-                            DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
-                            socket.send(ack_packet);
-                            timeouts=0;
-                        }
-                        if (WINDOWSIZE > 1)
-                        {
-                            while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
+                            offset = (framenum - lfnr);
+                            if (offset<0)
+                                offset += MAXFRAMENUM;
+                            // System.out.println(offset+" "+framenum+" "+lfnr);
+                            if (offset >= WINDOWSIZE)
                             {
-                                fos.write(get_payload(buffer));
-                                for (int i=0;i<WINDOWSIZE-1;i++)
+                                System.out.println("Sender retransmitting acked frame: "+framenum);
+                                ack_buffer[POSOFFRAMENUM] = framenum;
+                                DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
+                                socket.send(ack_packet);
+                            }
+                            else
+                            {
+                                recWindowBuff[offset] = Arrays.copyOf(buffer, buffer.length);
+                                ack_buffer[POSOFFRAMENUM] = framenum;
+                                System.out.println("Acking "+framenum);
+                                DatagramPacket ack_packet = new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort());
+                                socket.send(ack_packet);
+                                timeouts=0;
+                            }
+                            if (WINDOWSIZE > 1)
+                            {
+                                while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
                                 {
-                                    recWindowBuff[i]=recWindowBuff[i+1];
+                                    fos.write(get_payload(recWindowBuff[0]));
+                                    for (int i=0;i<WINDOWSIZE-1;i++)
+                                    {
+                                        recWindowBuff[i]=recWindowBuff[i+1];
+                                    }
+                                    lfnr = recWindowBuff[0][POSOFFRAMENUM];
+                                    recWindowBuff[recWindowBuff.length-1] = null;
                                 }
-                                lfnr = recWindowBuff[0][POSOFFRAMENUM];
-                                lfr--;
-                                recWindowBuff[recWindowBuff.length-1] = null;
                             }
                         }
                     }
@@ -196,6 +197,8 @@ public class udpreceiver implements RReceiveUDPI{
                         return false;
                     }
                 }
+                fos.close();
+                return true;
             }
             catch(Exception e){ e.printStackTrace(); }
             System.out.println("This should never be printed");
@@ -204,13 +207,13 @@ public class udpreceiver implements RReceiveUDPI{
                 fos.close();
             }
             catch(IOException e){e.printStackTrace(); };
-            return false;
         }
         catch (FileNotFoundException e)
         {
             e.printStackTrace();
             return false;
         }
+        return false;
     }
 
     public static boolean emptyBuffer(byte[][] arry)

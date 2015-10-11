@@ -40,8 +40,8 @@ public class udpsender implements RSendUDPI{
     static final int SOCKETTIMEOUT = 10;
 
     static int BUFFARRAYSIZE = MAXARRAYSIZE;
-    // static String FILENAME = "big_test_file";
-    static String FILENAME = "medium_test_file";
+    static String FILENAME = "big_test_file";
+    // static String FILENAME = "medium_test_file";
 
     public static void main(String[] args)
     {
@@ -154,25 +154,29 @@ public class udpsender implements RSendUDPI{
                             break;
                         readBuff[bi] = (byte)x;
                     }
-                    if (bi == 0 && !eof_frame_sent)
+                    if (bi == 0)
                     {
-                        set_packet_length(buffer, 7);
-                        buffer[4] = 3;
-                        buffer[5] = 0x04;
-                        buffer[POSOFFRAMENUM] = framenum;
-                        done_read_file = true;
-                        System.out.println("Done reading file");
-                        lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
-                        sendWindowBuff[lsf] = new byte[BUFFARRAYSIZE];
-                        for (int i=0;i<BUFFARRAYSIZE;i++)
-                            sendWindowBuff[lsf][i] = buffer[i];
-                        sendWindowTimes[lsf] = System.currentTimeMillis();
-                        outstanding_frames++;
-                        send_ready = true;
-                        eof_frame_sent = true;
+                        if (!eof_frame_sent)
+                        {
+                            set_packet_length(buffer, 7);
+                            buffer[4] = 3;
+                            buffer[5] = 0x04;
+                            buffer[POSOFFRAMENUM] = framenum;
+                            done_read_file = true;
+                            System.out.println("Done reading file");
+                            lsf = (lsf+1); //the mod is only neccessary for size of 1 b/c shifting.
+                            sendWindowBuff[lsf] = new byte[BUFFARRAYSIZE];
+                            for (int i=0;i<BUFFARRAYSIZE;i++)
+                                sendWindowBuff[lsf][i] = buffer[i];
+                            sendWindowTimes[lsf] = System.currentTimeMillis();
+                            outstanding_frames++;
+                            send_ready = true;
+                            eof_frame_sent = true;
+                        }
                     }
                     else
                     {
+                        System.out.println("Reading file" + bi);
                         set_packet_length(buffer, bi+4);
                         buffer[4] = 3;
                         buffer[5] = 0x00;
