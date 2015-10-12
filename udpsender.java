@@ -9,6 +9,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
 import java.net.SocketTimeoutException;
+import java.io.File;
 
 interface RSendUDPI {
     public boolean setMode(int mode);
@@ -40,8 +41,8 @@ public class udpsender implements RSendUDPI{
     static final int SOCKETTIMEOUT = 10;
 
     static int BUFFARRAYSIZE = MAXARRAYSIZE;
-    static String FILENAME = "super_big_test_file";
-    // static String FILENAME = "big_test_file";
+    // static String FILENAME = "super_big_test_file";
+    static String FILENAME = "big_test_file";
     // static String FILENAME = "medium_test_file";
 
     public static void main(String[] args)
@@ -139,7 +140,6 @@ public class udpsender implements RSendUDPI{
             boolean eof_frame_sent = false;
             long bytes_sent = 0;
 
-            System.out.println("Send %l bytes" % file_size)
             for (int i=0;i<WINDOWSIZE;i++)
             {
                 sendWindowBuff[i] = null;
@@ -196,14 +196,15 @@ public class udpsender implements RSendUDPI{
                         sendWindowTimes[lsf] = System.currentTimeMillis();
                         outstanding_frames++;
                         send_ready = true;
-                        bytes_sent(BUFFARRAYSIZE-HEADERLENG);
+                        bytes_sent += (BUFFARRAYSIZE-HEADERLENG);
                     }
                 }
                 try
                 {
                     if (send_ready)
                     {
-                        System.out.println(("%f sending "%((float)bytes_sent/file_size))+buffer[POSOFFRAMENUM]);
+                        float perc_done = ((float)bytes_sent/file_size)*100;
+                        System.out.format("%f sending %d\n", perc_done, buffer[POSOFFRAMENUM]);
                         socket.send(packet);
                         framenum++;
                         framenum%=MAXFRAMENUM;
