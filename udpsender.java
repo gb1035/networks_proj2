@@ -40,7 +40,8 @@ public class udpsender implements RSendUDPI{
     static final int SOCKETTIMEOUT = 10;
 
     static int BUFFARRAYSIZE = MAXARRAYSIZE;
-    static String FILENAME = "big_test_file";
+    static String FILENAME = "super_big_test_file";
+    // static String FILENAME = "big_test_file";
     // static String FILENAME = "medium_test_file";
 
     public static void main(String[] args)
@@ -119,6 +120,7 @@ public class udpsender implements RSendUDPI{
     {
         try {
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
+            long file_size = (new File(FILENAME)).length();
             byte [] buffer = new byte[BUFFARRAYSIZE];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(SERVER), PORT);
             byte[] ack_buffer = new byte[HEADERLENG];
@@ -135,6 +137,9 @@ public class udpsender implements RSendUDPI{
             int outstanding_frames = 0;
             boolean send_ready = false;
             boolean eof_frame_sent = false;
+            long bytes_sent = 0;
+
+            System.out.println("Send %l bytes" % file_size)
             for (int i=0;i<WINDOWSIZE;i++)
             {
                 sendWindowBuff[i] = null;
@@ -176,7 +181,6 @@ public class udpsender implements RSendUDPI{
                     }
                     else
                     {
-                        System.out.println("Reading file" + bi);
                         set_packet_length(buffer, bi+4);
                         buffer[4] = 3;
                         buffer[5] = 0x00;
@@ -192,13 +196,14 @@ public class udpsender implements RSendUDPI{
                         sendWindowTimes[lsf] = System.currentTimeMillis();
                         outstanding_frames++;
                         send_ready = true;
+                        bytes_sent(BUFFARRAYSIZE-HEADERLENG);
                     }
                 }
                 try
                 {
                     if (send_ready)
                     {
-                        System.out.println("sending "+buffer[POSOFFRAMENUM]);
+                        System.out.println(("%f sending "%((float)bytes_sent/file_size))+buffer[POSOFFRAMENUM]);
                         socket.send(packet);
                         framenum++;
                         framenum%=MAXFRAMENUM;
@@ -225,7 +230,6 @@ public class udpsender implements RSendUDPI{
                         InetAddress client = ack_packet.getAddress();
                         byte ack_framenum = ack_buffer[POSOFFRAMENUM];
                         System.out.println("acked " + ack_framenum);
-                        System.out.println(Arrays.toString(ack_buffer));
                         for (int j=0;j<WINDOWSIZE;j++)
                         {
                             if (sendWindowBuff[j]!=null && sendWindowBuff[j][POSOFFRAMENUM] == ack_framenum)

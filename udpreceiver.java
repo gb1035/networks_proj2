@@ -28,7 +28,7 @@ public class udpreceiver implements RReceiveUDPI{
     static int STARTOFHEADER = 5;
     static final int MAXARRAYSIZE = 134217727;
     static final int POSOFFRAMENUM = 6;
-    static final int WAITAFTEREOF = 1000; //how long after eof to wait to ack any lost frames.
+    static final int WAITAFTEREOF = 2000; //how long after eof to wait to ack any lost frames.
 
     public static void main(String[] args)
     {
@@ -121,7 +121,7 @@ public class udpreceiver implements RReceiveUDPI{
                         int message_code =  buffer[5];
                         byte framenum =  buffer[POSOFFRAMENUM];
                         System.out.println("got "+framenum);
-                        System.out.println(Arrays.toString(Arrays.copyOfRange(buffer, 0, 20)));
+                        // System.out.println(Arrays.toString(Arrays.copyOfRange(buffer, 0, 20)));
                         // for (int i=0;i<WINDOWSIZE;i++)
                         // {
                         //     if (recWindowBuff[i]!=null)
@@ -132,19 +132,19 @@ public class udpreceiver implements RReceiveUDPI{
                         if(message_code == 0x04)
                         {
                             System.out.println("End of transmission");
-                            if (WINDOWSIZE > 1)//purge the buffer
-                            {
-                                while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
-                                {
-                                    fos.write(get_payload(recWindowBuff[0]));
-                                    for (int i=0;i<recWindowBuff.length-1;i++)
-                                    {
-                                        recWindowBuff[i]=recWindowBuff[i+1];
-                                    }
-                                    recWindowBuff[recWindowBuff.length-1] = null;
-                                }
-                                fos.write(get_payload(recWindowBuff[0]));
-                            }
+                            // if (WINDOWSIZE > 1)//purge the buffer
+                            // {
+                            //     while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
+                            //     {
+                            //         fos.write(get_payload(recWindowBuff[0]));
+                            //         for (int i=0;i<recWindowBuff.length-1;i++)
+                            //         {
+                            //             recWindowBuff[i]=recWindowBuff[i+1];
+                            //         }
+                            //         recWindowBuff[recWindowBuff.length-1] = null;
+                            //     }
+                            //     fos.write(get_payload(recWindowBuff[0]));
+                            // }
                             ack_buffer[POSOFFRAMENUM] = framenum;
                             socket.send(new DatagramPacket(ack_buffer, ack_buffer.length, client, packet.getPort()));
                             got_eof_time = System.currentTimeMillis();
@@ -196,6 +196,21 @@ public class udpreceiver implements RReceiveUDPI{
                         fos.close();
                         return false;
                     }
+                }
+                if (WINDOWSIZE > 1)
+                {
+                    while(recWindowBuff[0]!=null && recWindowBuff[1]!=null)
+                    {
+                        System.out.println("Flushing buffer");
+                        fos.write(get_payload(recWindowBuff[0]));
+                        for (int i=0;i<WINDOWSIZE-1;i++)
+                        {
+                            recWindowBuff[i]=recWindowBuff[i+1];
+                        }
+                        lfnr = recWindowBuff[0][POSOFFRAMENUM];
+                        recWindowBuff[recWindowBuff.length-1] = null;
+                    }
+                    fos.write(get_payload(recWindowBuff[0]));
                 }
                 fos.close();
                 return true;
