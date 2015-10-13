@@ -31,19 +31,21 @@ public class udpsender implements RSendUDPI{
     //static final String SERVER = "linux1.ens.utulsa.edu";
     static final String SERVER = "localhost";
     static final int PORT = 32456;
-    static final int TIMEOUT = 1000;
     static final int RETRYTIMES = 10;
-    static final int WINDOWSIZE = 5;
-    static final byte MAXFRAMENUM = 10;
     static final int MAXARRAYSIZE = 32767;
     static final int HEADERLENG = 7;
     static final int POSOFFRAMENUM = 6;
     static final int SOCKETTIMEOUT = 10;
 
     static int BUFFARRAYSIZE = MAXARRAYSIZE;
+    static long BUFFSIZE = 256;
     // static String FILENAME = "super_big_test_file";
-    static String FILENAME = "big_test_file";
-    // static String FILENAME = "medium_test_file";
+    // static String FILENAME = "extra_big_test_file";
+    static String FILENAME = "test_file";
+    static long TIMEOUT = 20;
+    static int MODE = 0;
+    static int WINDOWSIZE = 5;
+    static byte MAXFRAMENUM = 10;
 
     public static void main(String[] args)
     {
@@ -55,28 +57,40 @@ public class udpsender implements RSendUDPI{
         // }
         // catch(Exception e){ e.printStackTrace(); }
         udpsender s = new udpsender();
+        s.setMode(1);
+        s.setModeParameter(15000);
         s.sendFile();
     }
 
     public boolean setMode(int mode)
     {
-        boolean retVal = false;
-        return retVal;
+        if (mode == 0 || mode == 1)
+        {
+            MODE = mode;
+            return true;
+        }
+        return false;
     }
     public int getMode()
     {
-        int retVal = 0;
-        return retVal;
+        return MODE;
     }
     public boolean setModeParameter(long n)
     {
-        boolean retVal = false;
-        return retVal;
+        if (MODE == 0)
+        {
+            return false;
+        }
+        BUFFSIZE = n;
+        return true;
     }
     public long getModeParameter()
     {
-        long retVal = 0;
-        return retVal;
+        if (MODE == 0)
+        {
+            return 0;
+        }
+        return BUFFSIZE;
     }
     public void setFilename(String fname)
     {
@@ -84,18 +98,20 @@ public class udpsender implements RSendUDPI{
     }
     public String getFilename()
     {
-        String retVal = "";
-        return retVal;
+        return FILENAME;
     }
     public boolean setTimeout(long timeout)
     {
-        boolean retVal = false;
-        return retVal;
+        if (timeout > 0)
+        {
+            TIMEOUT = timeout;
+            return true;
+        }
+        return false;
     }
     public long getTimeout()
     {
-        long retVal = 0;
-        return retVal;
+        return TIMEOUT;
     }
     public boolean setLocalPort(int port)
     {
@@ -120,17 +136,30 @@ public class udpsender implements RSendUDPI{
     public boolean sendFile()
     {
         try {
+            //set up socket
+            UDPSocket socket = new UDPSocket(23456);
+            socket.setSoTimeout(SOCKETTIMEOUT);
+            //calculate framesize
+            long send_buff_size = socket.getSendBufferSize();
+            BUFFARRAYSIZE = (int)(send_buff_size - HEADERLENG);
+            WINDOWSIZE = (int)Math.ceil(BUFFSIZE / send_buff_size);
+            if (WINDOWSIZE > MAXARRAYSIZE)
+                WINDOWSIZE = MAXARRAYSIZE;
+            MAXFRAMENUM = (byte)((WINDOWSIZE*2) + 1);
+            System.out.println(WINDOWSIZE+" "+MAXFRAMENUM);
+            //set up file reader
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
             long file_size = (new File(FILENAME)).length();
+            //set up packets
             byte [] buffer = new byte[BUFFARRAYSIZE];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(SERVER), PORT);
             byte[] ack_buffer = new byte[HEADERLENG];
             DatagramPacket ack_packet = new DatagramPacket(ack_buffer,ack_buffer.length);
-            UDPSocket socket = new UDPSocket(23456);
-            socket.setSoTimeout(SOCKETTIMEOUT);
             byte[] readBuff = new byte[BUFFARRAYSIZE-HEADERLENG];
+            //set up window buffers
             byte[][] sendWindowBuff = new byte[WINDOWSIZE][BUFFARRAYSIZE];
             long[] sendWindowTimes = new long[WINDOWSIZE];
+            //misc vars
             boolean giveup = false;
             boolean done_read_file = false;
             byte framenum = 0;
@@ -139,6 +168,7 @@ public class udpsender implements RSendUDPI{
             boolean send_ready = false;
             boolean eof_frame_sent = false;
             long bytes_sent = 0;
+            long start_time = System.currentTimeMillis();
 
             for (int i=0;i<WINDOWSIZE;i++)
             {
@@ -217,7 +247,6 @@ public class udpsender implements RSendUDPI{
                         {
                             for (int j=0;j<BUFFARRAYSIZE;j++)
                                 buffer[j] = sendWindowBuff[i][j];
-                            // System.out.println(Arrays.toString(buffer));
                             sendWindowTimes[i] = System.currentTimeMillis();
                             System.out.println("retransmitting "+ buffer[POSOFFRAMENUM]);
                             socket.send(packet);
@@ -250,7 +279,6 @@ public class udpsender implements RSendUDPI{
                             lsf--;
                             outstanding_frames--;
                         }
-                        // System.out.print(new String("ack"));
                     }
                     if (sendWindowBuff[0] == null && done_read_file)
                     {
@@ -260,19 +288,15 @@ public class udpsender implements RSendUDPI{
                 }
                 catch(SocketTimeoutException e)
                 {
-
                 }
                 catch(IOException e)
                 {
                     e.printStackTrace();
-                    //System.out.println("No ack in time, resending");
-                    // if (i == RETRYTIMES)
-                    // {
-                    //     System.out.println("Too many timeouts, giving up.");
-                    //     giveup = true;
-                    //     return false;
-                    // }
+                    System.exit(1);
                 }
+            System.out.println(bytes_sent);
+            long transmit_time = System.currentTimeMillis() - start_time;
+            System.out.println(transmit_time);
             }
         }
         catch(FileNotFoundException e)
