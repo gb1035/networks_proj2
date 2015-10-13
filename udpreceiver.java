@@ -40,7 +40,7 @@ public class udpreceiver implements RReceiveUDPI{
     {
         udpreceiver r = new udpreceiver();
         r.setMode(1);
-        r.setModeParameter(15000);
+        // r.setModeParameter(15000);
         r.receiveFile();
     }
 
@@ -59,8 +59,12 @@ public class udpreceiver implements RReceiveUDPI{
     }
     public boolean setModeParameter(long n)
     {
-        boolean retVal = false;
-        return retVal;
+        if (MODE == 0)
+        {
+            return false;
+        }
+        BUFFSIZE = n;
+        return true;
     }
     public long getModeParameter()
     {
@@ -68,7 +72,7 @@ public class udpreceiver implements RReceiveUDPI{
         {
             return 0;
         }
-        return BUFFARRAYSIZE;
+        return BUFFSIZE;
     }
     public void setFilename(String fname)
     {
@@ -97,10 +101,12 @@ public class udpreceiver implements RReceiveUDPI{
             //set up window sizes
             long send_buff_size = socket.getSendBufferSize();
             BUFFARRAYSIZE = (int)(send_buff_size - HEADERLENG);
-            WINDOWSIZE = (int)Math.ceil(BUFFSIZE / send_buff_size) + 1;
+            WINDOWSIZE = (int)Math.ceil((double)BUFFSIZE / send_buff_size);
             if (WINDOWSIZE > MAXARRAYSIZE)
                 WINDOWSIZE = MAXARRAYSIZE;
             MAXFRAMENUM = (byte)((WINDOWSIZE*2) + 1);
+            WINDOWSIZE++; // to store the extra message
+            System.out.println(BUFFSIZE+" "+send_buff_size+" "+WINDOWSIZE+" "+MAXFRAMENUM);
             //set up the input file
             FileOutputStream fos = new FileOutputStream(FILENAME);
             boolean retVal = false;
@@ -207,14 +213,12 @@ public class udpreceiver implements RReceiveUDPI{
             fos.close();
             return true;
         }
-        catch (FileNotFoundException e)
+        catch (Exception e)
         {
+            System.out.println("This should never be printed");
             e.printStackTrace();
             return false;
         }
-        catch(Exception e){ e.printStackTrace(); }
-        System.out.println("This should never be printed");
-        return false;
     }
 
     public static boolean emptyBuffer(byte[][] arry)

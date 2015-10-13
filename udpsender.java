@@ -41,7 +41,7 @@ public class udpsender implements RSendUDPI{
     static long BUFFSIZE = 256;
     // static String FILENAME = "super_big_test_file";
     // static String FILENAME = "extra_big_test_file";
-    static String FILENAME = "test_file";
+    static String FILENAME = "medium_test_file";
     static long TIMEOUT = 20;
     static int MODE = 0;
     static int WINDOWSIZE = 5;
@@ -58,7 +58,7 @@ public class udpsender implements RSendUDPI{
         // catch(Exception e){ e.printStackTrace(); }
         udpsender s = new udpsender();
         s.setMode(1);
-        s.setModeParameter(15000);
+        // s.setModeParameter(15000);
         s.sendFile();
     }
 
@@ -142,11 +142,11 @@ public class udpsender implements RSendUDPI{
             //calculate framesize
             long send_buff_size = socket.getSendBufferSize();
             BUFFARRAYSIZE = (int)(send_buff_size - HEADERLENG);
-            WINDOWSIZE = (int)Math.ceil(BUFFSIZE / send_buff_size);
+            WINDOWSIZE = (int)Math.ceil((double)BUFFSIZE / send_buff_size);
             if (WINDOWSIZE > MAXARRAYSIZE)
                 WINDOWSIZE = MAXARRAYSIZE;
             MAXFRAMENUM = (byte)((WINDOWSIZE*2) + 1);
-            System.out.println(WINDOWSIZE+" "+MAXFRAMENUM);
+            System.out.println(BUFFSIZE+" "+send_buff_size+" "+WINDOWSIZE+" "+MAXFRAMENUM);
             //set up file reader
             BufferedReader br = new BufferedReader(new FileReader(FILENAME));
             long file_size = (new File(FILENAME)).length();
