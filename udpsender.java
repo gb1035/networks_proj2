@@ -41,7 +41,7 @@ public class udpsender implements RSendUDPI{
     static long BUFFSIZE = 256;
     // static String FILENAME = "super_big_test_file";
     // static String FILENAME = "extra_big_test_file";
-    static String FILENAME = "medium_test_file";
+    static String FILENAME = "extra_big_test_file";
     static long TIMEOUT = 20;
     static int MODE = 0;
     static int WINDOWSIZE = 5;
@@ -58,7 +58,7 @@ public class udpsender implements RSendUDPI{
         // catch(Exception e){ e.printStackTrace(); }
         udpsender s = new udpsender();
         s.setMode(1);
-        // s.setModeParameter(15000);
+        s.setModeParameter(15000);
         s.sendFile();
     }
 
@@ -259,7 +259,7 @@ public class udpsender implements RSendUDPI{
                     {
                         InetAddress client = ack_packet.getAddress();
                         byte ack_framenum = ack_buffer[POSOFFRAMENUM];
-                        System.out.println("acked " + ack_framenum);
+                        // System.out.println("acked " + ack_framenum);  //--------------------------------------------------
                         for (int j=0;j<WINDOWSIZE;j++)
                         {
                             if (sendWindowBuff[j]!=null && sendWindowBuff[j][POSOFFRAMENUM] == ack_framenum)
@@ -294,10 +294,10 @@ public class udpsender implements RSendUDPI{
                     e.printStackTrace();
                     System.exit(1);
                 }
+            }
             System.out.println(bytes_sent);
             long transmit_time = System.currentTimeMillis() - start_time;
             System.out.println(transmit_time);
-            }
         }
         catch(FileNotFoundException e)
         {

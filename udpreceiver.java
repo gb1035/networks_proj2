@@ -40,7 +40,7 @@ public class udpreceiver implements RReceiveUDPI{
     {
         udpreceiver r = new udpreceiver();
         r.setMode(1);
-        // r.setModeParameter(15000);
+        r.setModeParameter(15000);
         r.receiveFile();
     }
 
