@@ -18,7 +18,7 @@ interface RReceiveUDPI {
     public boolean receiveFile();
 }
 
-public class udpreceiver implements RReceiveUDPI{
+public class RReceiveUDP implements RReceiveUDPI{
     static int TIMEOUT = 1000;
     static int RETRYTIMES = 30;
     static String FILENAME = "recieved_file";
@@ -39,7 +39,7 @@ public class udpreceiver implements RReceiveUDPI{
 
     public static void main(String[] args)
     {
-        udpreceiver r = new udpreceiver();
+        RReceiveUDP r = new RReceiveUDP();
         r.setMode(1);
         r.setModeParameter(15000);
         r.receiveFile();

@@ -27,7 +27,7 @@ interface RSendUDPI {
     public boolean sendFile();
 }
 
-public class udpsender implements RSendUDPI{
+public class RSendUDP implements RSendUDPI{
     //static final String SERVER = "linux1.ens.utulsa.edu";
     static final String SERVER = "localhost";
     static final int RETRYTIMES = 10;
@@ -53,11 +53,11 @@ public class udpsender implements RSendUDPI{
 
     public static void main(String[] args)
     {
-        // udpsender s = new udpsender();
-        // s.setReceiver(new InetSocketAddress("localhost", 32456));
-        // s.setMode(1);
-        // s.setModeParameter(15000);
-        // s.sendFile();
+        RSendUDP s = new RSendUDP();
+        s.setReceiver(new InetSocketAddress("localhost", 32456));
+        s.setMode(1);
+        s.setModeParameter(15000);
+        s.sendFile();
 
         // RSendUDP sender = new RSendUDP();
         // sender.setMode(1);
