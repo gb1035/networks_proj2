@@ -40,10 +40,11 @@ public class RSendUDP implements RSendUDPI{
     static int BUFFARRAYSIZE = MAXARRAYSIZE;
     static long BUFFSIZE = 256;
     // static String FILENAME = "super_big_test_file";
-    static String FILENAME = "extra_big_test_file";
+    // static String FILENAME = "extra_big_test_file";
     // static String FILENAME = "pretty_big_test_file";
     // static String FILENAME = "big_test_file";
     // static String FILENAME = "medium_test_file";
+    static String FILENAME = "sending_file.txt";
     static long TIMEOUT = 10;
     static int MODE = 0;
     static int WINDOWSIZE = 5;
@@ -53,20 +54,20 @@ public class RSendUDP implements RSendUDPI{
 
     public static void main(String[] args)
     {
-        RSendUDP s = new RSendUDP();
-        s.setReceiver(new InetSocketAddress("localhost", 32456));
-        s.setMode(1);
-        s.setModeParameter(15000);
-        s.sendFile();
+        // RSendUDP s = new RSendUDP();
+        // s.setReceiver(new InetSocketAddress("localhost", 32456));
+        // s.setMode(1);
+        // s.setModeParameter(15000);
+        // s.sendFile();
 
-        // RSendUDP sender = new RSendUDP();
-        // sender.setMode(1);
-        // sender.setModeParameter(512);
-        // sender.setTimeout(100);
-        // sender.setFilename("important.txt");
-        // sender.setLocalPort(23456);
-        // sender.setReceiver(new InetSocketAddress("localhost", 32456));
-        // sender.sendFile();
+        RSendUDP sender = new RSendUDP();
+        sender.setMode(1);
+        sender.setModeParameter(512);
+        sender.setTimeout(100);
+        sender.setFilename("important.txt");
+        sender.setLocalPort(23456);
+        sender.setReceiver(new InetSocketAddress("localhost", 32456));
+        sender.sendFile();
     }
 
     public boolean setMode(int mode)
@@ -264,7 +265,7 @@ public class RSendUDP implements RSendUDPI{
                         float perc_done = ((float)bytes_sent/file_size)*100;
                         if (buffer[5] == 0x00)
                         {
-//                            System.out.format("sending message %d with %d bytes of actual data\n", buffer[POSOFFRAMENUM], get_packet_length(buffer)-(HEADERLENG+CRCLENG));
+                            System.out.format("sending message %d with %d bytes of actual data\n", buffer[POSOFFRAMENUM], get_packet_length(buffer)-(HEADERLENG+CRCLENG));
                         }
                         else
                         {
@@ -288,7 +289,7 @@ public class RSendUDP implements RSendUDPI{
                             for (int j=0;j<BUFFARRAYSIZE;j++)
                                 buffer[j] = sendWindowBuff[i][j];
                             sendWindowTimes[i] = System.currentTimeMillis();
-//                            System.out.println("retransmitting "+ buffer[POSOFFRAMENUM]);
+                            System.out.println("retransmitting "+ buffer[POSOFFRAMENUM]);
                             socket.send(packet);
                         }
                     }
@@ -299,7 +300,7 @@ public class RSendUDP implements RSendUDPI{
                     {
                         InetAddress client = ack_packet.getAddress();
                         byte ack_framenum = ack_buffer[POSOFFRAMENUM];
-//                        System.out.println("acked " + ack_framenum);  //--------------------------------------------------
+                        System.out.format("message %d acked\n", ack_framenum);  //--------------------------------------------------
                         for (int j=0;j<WINDOWSIZE;j++)
                         {
                             if (sendWindowBuff[j]!=null && sendWindowBuff[j][POSOFFRAMENUM] == ack_framenum)

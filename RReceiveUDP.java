@@ -21,7 +21,7 @@ interface RReceiveUDPI {
 public class RReceiveUDP implements RReceiveUDPI{
     static int TIMEOUT = 1000;
     static int RETRYTIMES = 30;
-    static String FILENAME = "recieved_file";
+    static String FILENAME = "received_file";
     static int STARTOFHEADER = 5;
     static final int MAXARRAYSIZE = 32767;
     static final int HEADERLENG = 7;
@@ -39,17 +39,17 @@ public class RReceiveUDP implements RReceiveUDPI{
 
     public static void main(String[] args)
     {
-        RReceiveUDP r = new RReceiveUDP();
-        r.setMode(1);
-        r.setModeParameter(15000);
-        r.receiveFile();
+        // RReceiveUDP r = new RReceiveUDP();
+        // r.setMode(1);
+        // r.setModeParameter(15000);
+        // r.receiveFile();
 
-        // RReceiveUDP receiver = new RReceiveUDP();
-        // receiver.setMode(1);
-        // receiver.setModeParameter(512);
-        // receiver.setFilename("less_important.txt");
-        // receiver.setLocalPort(32456);
-        // receiver.receiveFile();
+        RReceiveUDP receiver = new RReceiveUDP();
+        receiver.setMode(1);
+        receiver.setModeParameter(512);
+        receiver.setFilename("less_important.txt");
+        receiver.setLocalPort(32456);
+        receiver.receiveFile();
     }
 
     public boolean setMode(int mode)
